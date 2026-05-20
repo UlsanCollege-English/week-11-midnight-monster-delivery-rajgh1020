@@ -6,11 +6,16 @@ import pytest
 
 from src.challenges import (
     HAUNTED_CITY,
+    best_next_monster_stop,
     monster_delivery_costs,
     shortest_monster_delivery,
     validate_haunted_map,
 )
 
+
+# ---------------------------------------------------------------------------
+# validate_haunted_map
+# ---------------------------------------------------------------------------
 
 def test_validate_haunted_map_accepts_valid_graph():
     validate_haunted_map(HAUNTED_CITY)
@@ -45,6 +50,34 @@ def test_validate_haunted_map_rejects_missing_neighbor_node():
         validate_haunted_map(graph)
 
 
+def test_validate_haunted_map_rejects_non_dict():
+    with pytest.raises(ValueError):
+        validate_haunted_map("not a graph")
+
+
+def test_validate_haunted_map_rejects_non_dict_neighbors():
+    graph = {
+        "Crypt Kitchen": ["Fog Alley"],
+    }
+
+    with pytest.raises(ValueError):
+        validate_haunted_map(graph)
+
+
+def test_validate_haunted_map_accepts_node_with_no_outgoing_edges():
+    # A dead-end node is perfectly valid
+    graph = {
+        "Crypt Kitchen": {"Fog Alley": 3},
+        "Fog Alley": {},
+    }
+
+    validate_haunted_map(graph)  # should not raise
+
+
+# ---------------------------------------------------------------------------
+# monster_delivery_costs
+# ---------------------------------------------------------------------------
+
 def test_monster_delivery_costs_from_crypt_kitchen():
     result = monster_delivery_costs(HAUNTED_CITY, "Crypt Kitchen")
 
@@ -75,6 +108,32 @@ def test_monster_delivery_costs_missing_start_raises_value_error():
     with pytest.raises(ValueError):
         monster_delivery_costs(HAUNTED_CITY, "Missing Coffin Shop")
 
+
+def test_monster_delivery_costs_single_node_graph():
+    # A graph with only one node — start cost should be 0
+    graph = {"Crypt Kitchen": {}}
+    result = monster_delivery_costs(graph, "Crypt Kitchen")
+
+    assert result["Crypt Kitchen"] == 0
+
+
+def test_monster_delivery_costs_prefers_cheaper_longer_path():
+    # Two paths to Vampire Tower — one short but expensive, one longer but cheap
+    graph = {
+        "Start": {"A": 1, "B": 10},
+        "A": {"Vampire Tower": 1},
+        "B": {"Vampire Tower": 1},
+        "Vampire Tower": {},
+    }
+
+    result = monster_delivery_costs(graph, "Start")
+
+    assert result["Vampire Tower"] == 2  # via A, not via B
+
+
+# ---------------------------------------------------------------------------
+# shortest_monster_delivery
+# ---------------------------------------------------------------------------
 
 def test_shortest_monster_delivery_finds_expected_path():
     cost, path = shortest_monster_delivery(
@@ -179,3 +238,70 @@ def test_shortest_monster_delivery_accepts_either_tied_shortest_path():
         ["Crypt Kitchen", "Fog Alley", "Vampire Tower"],
         ["Crypt Kitchen", "Bone Bridge", "Vampire Tower"],
     ]
+
+
+def test_shortest_monster_delivery_direct_edge():
+    # There is a direct road — should take it, not the longer route
+    graph = {
+        "Crypt Kitchen": {"Vampire Tower": 1, "Fog Alley": 1},
+        "Fog Alley": {"Vampire Tower": 100},
+        "Vampire Tower": {},
+    }
+
+    cost, path = shortest_monster_delivery(
+        graph,
+        "Crypt Kitchen",
+        "Vampire Tower",
+    )
+
+    assert cost == 1
+    assert path == ["Crypt Kitchen", "Vampire Tower"]
+
+
+# ---------------------------------------------------------------------------
+# best_next_monster_stop (stretch)
+# ---------------------------------------------------------------------------
+
+def test_best_next_monster_stop_returns_cheapest():
+    cost, path = shortest_monster_delivery(HAUNTED_CITY, "Crypt Kitchen", "Fog Alley")
+    assert cost == 2
+
+    result = best_next_monster_stop(
+        HAUNTED_CITY,
+        "Crypt Kitchen",
+        ["Vampire Tower", "Fog Alley", "Goblin Market"],
+    )
+
+    # Fog Alley costs 2, Goblin Market costs 6, Vampire Tower costs 10
+    assert result == ("Fog Alley", 2)
+
+
+def test_best_next_monster_stop_tie_returns_first_in_list():
+    graph = {
+        "Start": {"A": 5, "B": 5},
+        "A": {},
+        "B": {},
+    }
+
+    result = best_next_monster_stop(graph, "Start", ["B", "A"])
+
+    # Both cost 5, but B comes first in the targets list
+    assert result == ("B", 5)
+
+
+def test_best_next_monster_stop_all_unreachable():
+    graph = {
+        "Start": {},
+        "Ghost Island": {},
+        "Shadow Swamp": {},
+    }
+
+    result = best_next_monster_stop(graph, "Start", ["Ghost Island", "Shadow Swamp"])
+
+    assert result == ("", inf)
+
+
+def test_best_next_monster_stop_missing_start():
+    result = best_next_monster_stop(HAUNTED_CITY, "Nowhere", ["Vampire Tower"])
+
+    assert result == ("", inf)
